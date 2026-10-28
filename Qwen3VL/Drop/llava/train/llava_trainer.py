@@ -1,0 +1,400 @@
+import os
+import torch
+
+from torch.utils.data import Sampler
+
+# 核心类导入
+from transformers import Trainer
+
+# 手动定义/补全缺失的检查函数，确保不再报错
+def is_sagemaker_mp_enabled():
+    return False
+
+def is_sagemaker_mp_available():
+    return False
+
+def has_length(dataset):
+    try:
+        return len(dataset) is not None
+    except (TypeError, NotImplementedError):
+        return False
+
+# 尝试导入其他确实存在的函数
+try:
+    from transformers.utils import (
+        is_accelerate_available,
+        is_bitsandbytes_available,
+        is_torch_tpu_available,
+    )
+    from transformers.integrations import is_deepspeed_available
+except ImportError:
+    # 备选路径
+    from transformers.utils.import_utils import (
+        is_accelerate_available,
+        is_bitsandbytes_available,
+    )
+    is_torch_tpu_available = lambda: False
+    is_deepspeed_available = lambda: False
+
+
+from typing import List, Optional
+from transformers.trainer_pt_utils import get_parameter_names
+import torch.nn as nn
+
+
+# 手动定义 ALL_LAYERNORM_LAYERS 以适配新版 Transformers
+ALL_LAYERNORM_LAYERS = [
+    nn.LayerNorm, 
+    nn.LocalResponseNorm, 
+    nn.GELU, 
+    nn.ReLU, 
+    nn.Sigmoid, 
+    nn.Tanh
+]
+
+# 如果删掉导入后报错说找不到 ShardedDDPOption，请添加这一行
+class ShardedDDPOption:
+    OFF = "off"
+    ZERO_DP_2 = "zero_dp_2"
+    ZERO_DP_3 = "zero_dp_3"
+
+
+def maybe_zero_3(param, ignore_status=False, name=None):
+    from deepspeed import zero
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    if hasattr(param, "ds_id"):
+        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            if not ignore_status:
+                print(name, 'no ignore status')
+        with zero.GatheredParameters([param]):
+            param = param.data.detach().cpu().clone()
+    else:
+        param = param.detach().cpu().clone()
+    return param
+
+
+def get_mm_adapter_state_maybe_zero_3(named_params, keys_to_match):
+    to_return = {k: t for k, t in named_params if any(key_match in k for key_match in keys_to_match)}
+    to_return = {k: maybe_zero_3(v, ignore_status=True, name=k).cpu() for k, v in to_return.items()}
+    return to_return
+
+
+def split_to_even_chunks(indices, lengths, num_chunks):
+    """
+    Split a list of indices into `chunks` chunks of roughly equal lengths.
+    """
+
+    if len(indices) % num_chunks != 0:
+        return [indices[i::num_chunks] for i in range(num_chunks)]
+
+    num_indices_per_chunk = len(indices) // num_chunks
+
+    chunks = [[] for _ in range(num_chunks)]
+    chunks_lengths = [0 for _ in range(num_chunks)]
+    for index in indices:
+        shortest_chunk = chunks_lengths.index(min(chunks_lengths))
+        chunks[shortest_chunk].append(index)
+        chunks_lengths[shortest_chunk] += lengths[index]
+        if len(chunks[shortest_chunk]) == num_indices_per_chunk:
+            chunks_lengths[shortest_chunk] = float("inf")
+
+    return chunks
+
+
+def get_modality_length_grouped_indices(lengths, batch_size, world_size, generator=None):
+    # We need to use torch for the random part as a distributed sampler will set the random seed for torch.
+    assert all(l != 0 for l in lengths), "Should not have zero length."
+    if all(l > 0 for l in lengths) or all(l < 0 for l in lengths):
+        # all samples are in the same modality
+        return get_length_grouped_indices(lengths, batch_size, world_size, generator=generator)
+    mm_indices, mm_lengths = zip(*[(i, l) for i, l in enumerate(lengths) if l > 0])
+    lang_indices, lang_lengths = zip(*[(i, -l) for i, l in enumerate(lengths) if l < 0])
+
+    mm_shuffle = [mm_indices[i] for i in get_length_grouped_indices(mm_lengths, batch_size, world_size, generator=None)]
+    lang_shuffle = [lang_indices[i] for i in get_length_grouped_indices(lang_lengths, batch_size, world_size, generator=None)]
+    megabatch_size = world_size * batch_size
+    mm_megabatches = [mm_shuffle[i : i + megabatch_size] for i in range(0, len(mm_shuffle), megabatch_size)]
+    lang_megabatches = [lang_shuffle[i : i + megabatch_size] for i in range(0, len(lang_shuffle), megabatch_size)]
+
+    last_mm = mm_megabatches[-1]
+    last_lang = lang_megabatches[-1]
+    additional_batch = last_mm + last_lang
+    megabatches = mm_megabatches[:-1] + lang_megabatches[:-1]
+    megabatch_indices = torch.randperm(len(megabatches), generator=generator)
+    megabatches = [megabatches[i] for i in megabatch_indices]
+
+    if len(additional_batch) > 0:
+        megabatches.append(sorted(additional_batch))
+
+    return [i for megabatch in megabatches for i in megabatch]
+
+
+def get_length_grouped_indices(lengths, batch_size, world_size, generator=None, merge=True):
+    # We need to use torch for the random part as a distributed sampler will set the random seed for torch.
+    indices = torch.randperm(len(lengths), generator=generator)
+    megabatch_size = world_size * batch_size
+    megabatches = [indices[i : i + megabatch_size].tolist() for i in range(0, len(lengths), megabatch_size)]
+    megabatches = [sorted(megabatch, key=lambda i: lengths[i], reverse=True) for megabatch in megabatches]
+    megabatches = [split_to_even_chunks(megabatch, lengths, world_size) for megabatch in megabatches]
+
+    return [i for megabatch in megabatches for batch in megabatch for i in batch]
+
+
+class LengthGroupedSampler(Sampler):
+    r"""
+    Sampler that samples indices in a way that groups together features of the dataset of roughly the same length while
+    keeping a bit of randomness.
+    """
+
+    def __init__(
+        self,
+        batch_size: int,
+        world_size: int,
+        lengths: Optional[List[int]] = None,
+        generator=None,
+        group_by_modality: bool = False,
+    ):
+        if lengths is None:
+            raise ValueError("Lengths must be provided.")
+
+        self.batch_size = batch_size
+        self.world_size = world_size
+        self.lengths = lengths
+        self.generator = generator
+        self.group_by_modality = group_by_modality
+
+    def __len__(self):
+        return len(self.lengths)
+
+    def __iter__(self):
+        if self.group_by_modality:
+            indices = get_modality_length_grouped_indices(self.lengths, self.batch_size, self.world_size, generator=self.generator)
+        else:
+            indices = get_length_grouped_indices(self.lengths, self.batch_size, self.world_size, generator=self.generator)
+        return iter(indices)
+
+
+class LLaVATrainer(Trainer):
+
+    def training_step(self, model, inputs, num_items_in_batch=None):
+        """
+        重写training_step以在每次参数更新后应用细粒度剪枝mask
+
+        Args:
+            model: 模型
+            inputs: 输入数据
+            num_items_in_batch: batch中的样本数（新版transformers添加的参数）
+        """
+        # 调用父类的training_step
+        if num_items_in_batch is not None:
+            loss = super().training_step(model, inputs, num_items_in_batch)
+        else:
+            loss = super().training_step(model, inputs)
+
+        # 应用细粒度剪枝mask（如果启用了LoRA-Drop）
+        if hasattr(self.args, 'lora_drop_enable') and self.args.lora_drop_enable:
+            try:
+                from CoIN.peft.tuners.clitmoelora import get_lora_drop_pruner
+                pruner = get_lora_drop_pruner()
+                if pruner is not None and hasattr(self.args, 'cur_task'):
+                    # 每100步打印一次调试信息
+                    if self.state.global_step % 100 == 0:
+                        num_masks = len(pruner.fine_grained_masks) if hasattr(pruner, 'fine_grained_masks') else 0
+                        print(f"[Step {self.state.global_step}] Applying masks: num_masks={num_masks}, cur_task={self.args.cur_task}")
+                    pruner.apply_fine_grained_masks(model, self.args.cur_task)
+            except Exception as e:
+                # 打印错误信息
+                if self.state.global_step % 100 == 0:
+                    print(f"[Step {self.state.global_step}] Error: {e}")
+
+        return loss
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        """
+        重写compute_loss以添加预训练权重指导的正则化损失
+
+        实现与LoRASculpt一致的正则化策略：
+        - 每个step都计算正则化损失
+        - 正则化项: λ * Σ ||M ⊙ ΔW||_F / N
+        - M是基于预训练权重计算的重要性mask
+
+        Args:
+            model: 模型
+            inputs: 输入数据
+            return_outputs: 是否返回模型输出
+            num_items_in_batch: batch中的样本数（新版transformers添加的参数）
+
+        Returns:
+            loss: 总损失（任务损失 + 正则化损失）
+            outputs: 模型输出（如果return_outputs=True）
+        """
+        # 计算任务损失
+        if num_items_in_batch is not None:
+            if return_outputs:
+                loss, outputs = super().compute_loss(model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch)
+            else:
+                loss = super().compute_loss(model, inputs, return_outputs=False, num_items_in_batch=num_items_in_batch)
+        else:
+            if return_outputs:
+                loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
+            else:
+                loss = super().compute_loss(model, inputs, return_outputs=False)
+
+        # 添加预训练权重指导的正则化损失（每个step都计算）
+        if hasattr(self.args, 'lora_drop_enable') and self.args.lora_drop_enable:
+            from CoIN.peft.tuners.clitmoelora import get_lora_drop_pruner
+            pruner = get_lora_drop_pruner()
+
+            if pruner is not None and hasattr(self.args, 'cur_task'):
+                # 计算正则化损失（与LoRASculpt一致的实现）
+                reg_loss = pruner.compute_pretrain_guided_regularization(model, self.args.cur_task)
+
+                # 添加到总损失
+                if isinstance(reg_loss, torch.Tensor) and reg_loss.item() > 0:
+                    task_loss_val = loss.item() if isinstance(loss, torch.Tensor) else loss
+                    loss = loss + reg_loss
+
+                    # 每2步打印一次损失信息
+                    if self.state.global_step % 50 == 0:
+                        reg_loss_val = reg_loss.item()
+                        total_loss_val = loss.item()
+                        print(f"[Step {self.state.global_step}] Loss breakdown: task={task_loss_val:.4f}, reg={reg_loss_val:.8f}, total={total_loss_val:.4f}")
+
+
+        return (loss, outputs) if return_outputs else loss
+
+    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+        if self.train_dataset is None or not has_length(self.train_dataset):
+            return None
+
+        if self.args.group_by_modality_length:
+            # 处理Subset包装的情况
+            dataset = self.train_dataset
+            if hasattr(dataset, 'dataset'):
+                # 如果是Subset，需要根据indices过滤lengths
+                base_dataset = dataset.dataset
+                lengths = base_dataset.modality_lengths
+                # 只保留Subset中indices对应的lengths
+                lengths = [lengths[i] for i in dataset.indices]
+            else:
+                lengths = dataset.modality_lengths
+            return LengthGroupedSampler(
+                self.args.train_batch_size,
+                world_size=self.args.world_size * self.args.gradient_accumulation_steps,
+                lengths=lengths,
+                group_by_modality=True,
+            )
+        else:
+            return super()._get_train_sampler()
+
+    def create_optimizer(self):
+        """
+        Setup the optimizer.适配新版 Transformers 4.46+
+        """
+        # 1. 检查 SageMaker（使用我们之前定义的补丁函数）
+        if is_sagemaker_mp_enabled():
+            return super().create_optimizer()
+
+        # 移除原有的 sharded_ddp 判断逻辑，因为它已在新版中废弃
+
+        opt_model = self.model
+
+        if self.optimizer is None:
+            # 获取需要 weight decay 的参数名
+            decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+            decay_parameters = [name for name in decay_parameters if "bias" not in name]
+            
+            if self.args.mm_projector_lr is not None:
+                # 特殊处理 mm_projector 的学习率
+                projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
+                optimizer_grouped_parameters = [
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": self.args.mm_projector_lr,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                        "lr": self.args.mm_projector_lr,
+                    },
+                ]
+            else:
+                # 标准的分组参数
+                optimizer_grouped_parameters = [
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                    },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                    },
+                ]
+
+            # 获取优化器类和参数
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+
+            # 移除 sharded_ddp == ShardedDDPOption.SIMPLE 的判断，直接初始化优化器
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+            
+            if optimizer_cls.__name__ == "Adam8bit":
+                import bitsandbytes
+                manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+                skipped = 0
+                for module in opt_model.modules():
+                    if isinstance(module, nn.Embedding):
+                        skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                        logger.info(f"skipped {module}: {skipped/2**20}M params")
+                        manager.register_module_override(module, "weight", {"optim_bits": 32})
+                        logger.debug(f"bitsandbytes: will optimize {module} in fp32")
+                logger.info(f"skipped: {skipped/2**20}M params")
+
+        return self.optimizer
+
+    def _save_checkpoint(self, model, trial, metrics=None):
+        if getattr(self.args, 'tune_mm_mlp_adapter', False):
+            from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+            checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
+
+            run_dir = self._get_output_dir(trial=trial)
+            output_dir = os.path.join(run_dir, checkpoint_folder)
+
+            # Only save Adapter
+            keys_to_match = ['mm_projector', 'vision_resampler']
+            if getattr(self.args, "use_im_start_end", False):
+                keys_to_match.extend(['embed_tokens', 'embed_in'])
+
+            weight_to_save = get_mm_adapter_state_maybe_zero_3(self.model.named_parameters(), keys_to_match)
+
+            if self.args.local_rank == 0 or self.args.local_rank == -1:
+                self.model.config.save_pretrained(output_dir)
+                torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+        else:
+            super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        if getattr(self.args, 'tune_mm_mlp_adapter', False):
+            pass
+        else:
+            super(LLaVATrainer, self)._save(output_dir, state_dict)

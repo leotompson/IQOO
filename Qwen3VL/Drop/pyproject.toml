@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qwen3vl-lora-drop"
+version = "0.1.0"
+description = "LoRA-Drop continual instruction tuning for Qwen3-VL."
+readme = "README_QWEN3VL.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+    "torch==2.6.0",
+    "torchvision==0.21.0",
+    "transformers==4.57.0",
+    "accelerate==1.7.0",
+    "deepspeed==0.17.1",
+    "numpy",
+    "pillow",
+]
+
+[project.optional-dependencies]
+train = ["flash-attn==2.7.4.post1", "torchcodec==0.2", "ninja", "wandb"]
+
+[tool.setuptools.packages.find]
+include = ["CoIN*"]
+
+[tool.wheel]
+exclude = ["llava*"]

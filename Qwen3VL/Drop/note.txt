@@ -1,0 +1,72 @@
+集成了LoRA-Drop
+性能与DISCO差不多，
+但是出现了剪枝结果趋同的问题
+
+Drop-细粒度结构化剪枝-预训练参数指导的正则项
+---四个指标均超过DISCO
+75.05333333333333
+68.07833333333333
+81.11188888888888
+-8.369999999999997
+
+MFT	 74.70666666666666
+MFN	 67.31666666666668
+MAA	 80.99652777777777
+BWT	 -8.867999999999997
+
+export HARD_PATH="/data/taosen/code/MCITlib"
+
+# 直接加载剪枝结果
+export DEBUG_PRUNER_PATH="/data/taosen/code/MCITlib/checkpoint/UCIT/LLaVA-1.5/Drop/Task2_llava_lora/lora_drop_pruner.pt"
+unset DEBUG_PRUNER_PATH
+
+sh scripts/MCITlib/Train/train_UCIT.sh
+
+# Task1
+HARD_PATH=/data/taosen/code/MCITlib
+bash scripts/MCITlib/Train/Task1.sh \
+    $HARD_PATH/configs/modal_configs/llava.json \
+    $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json \
+    $HARD_PATH/configs/train_configs/Drop/LLaVA/UCIT/train/task1.json
+bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 1
+
+# Taskn
+HARD_PATH=/data/taosen/code/MCITlib
+bash scripts/MCITlib/Train/Taskn.sh \
+    $HARD_PATH/configs/modal_configs/llava.json \
+    $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json \
+    $HARD_PATH/configs/train_configs/Drop/LLaVA/UCIT/train/task2.json
+bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 2
+
+bash scripts/MCITlib/Train/Taskn.sh \
+    $HARD_PATH/configs/modal_configs/llava.json \
+    $HARD_PATH/configs/data_configs/UCIT/VizWiz.json \
+    $HARD_PATH/configs/train_configs/Drop/LLaVA/UCIT/train/task3.json
+
+# 用第二个task的ckpt来推理第二个数据集 
+bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json $HARD_PATH/configs/train_configs/Drop/LLaVA/UCIT/eval/task2.json
+
+
+VizWiz光测试就要用51min
+
+
+Drop结果
+Computed metrics from: /data/taosen/code/MCITlib/LLaVA/Drop/results/UCIT/each_dataset/Drop_UCIT_summary.csv
+MFT: 74.28500000000001
+MFN: 68.21666666666667
+MAA: 80.77977777777778
+BWT: -7.282000000000006
+
+DISCO结果
+Computed metrics from: /data/taosen/code/MCITlib/LLaVA/DISCO/results/UCIT/each_dataset/DISCO_UCIT_summary.csv
+MFT: 74.70666666666666
+MFN: 67.31666666666668
+MAA: 80.99652777777777
+BWT: -8.867999999999997
+
+
+Drop-debug
+MFT: 74.07000000000001
+MFN: 67.09833333333333
+MAA: 81.06155555555556
+BWT: -8.366000000000001
