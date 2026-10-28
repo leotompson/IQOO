@@ -202,7 +202,7 @@ if __name__ == "__main__":
         merge_captions(output_file, args.annotation_file, ans_gt_file)
         eval_single(output_file, args.annotation_file, total)
 
-        # api_key = "YOUR_API_KEY"
+        # api_key = "sk-REDACTED"
 
         # batch_size = 8 
         # overall_accuracy = deepseek_chat_final(api_key, ans_gt_file, batch_size=batch_size)

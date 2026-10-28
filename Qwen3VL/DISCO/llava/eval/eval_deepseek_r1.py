@@ -133,7 +133,7 @@ if __name__ == "__main__":
     if args.result_file is not None:
         ans_gt_file = eval_single(args.annotation_file, args.result_file)
 
-        # api_key = "YOUR_API_KEY"   # deepseek  YOUR_API_KEY
+        # api_key = "sk-REDACTED"   # deepseek  sk-REDACTED
 
         # batch_size = 2 
         # overall_accuracy = deepseek_chat_final(api_key, ans_gt_file, batch_size=batch_size)

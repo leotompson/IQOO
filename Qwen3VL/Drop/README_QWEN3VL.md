@@ -1,8 +1,11 @@
 # LoRA-Drop for Qwen3-VL
 
-The active training entry point is `train_qwen.py`. It is based on the original
-`Qwen3-VL/qwen-vl-finetune` data and model code; the old `llava/` tree is kept
-only as the algorithm reference.
+The active training path follows LLaVA/Drop:
+`scripts/MCITlib/Train/Task*.sh` -> `llava/train/train_mem_MOE.py` ->
+`llava/train/train_MOE.py::train` -> `CoIN.peft.get_peft_model` ->
+`CoINMOELoraLinear.forward` -> `LoRADropPruner` -> `LLaVATrainer`.
+Qwen3-VL supplies the base model and multimodal data processing.
+`train_qwen.py` remains only as a compatibility entry point.
 
 The Qwen version preserves the two-stage Drop procedure:
 
@@ -22,8 +25,8 @@ Annotations use the upstream Qwen conversation format with `<image>` and
 media root with `--data_path` and `--image_folder`.
 
 ```bash
-torchrun --nproc_per_node=8 train_qwen.py \
-  --deepspeed scripts/zero2_lora_drop.json \
+torchrun --nproc_per_node=8 llava/train/train_mem_MOE.py \
+  --deepspeed scripts/zero1_lora_drop.json \
   --model_name_or_path Qwen/Qwen3-VL-4B-Instruct \
   --data_path /data/task1.json --image_folder /data/images \
   --output_dir outputs/drop-task1 \
@@ -46,4 +49,20 @@ The existing JSON-driven launchers were converted to Qwen3-VL and remain at
 
 For evaluation, `from model_loader import load_model` returns the Qwen model,
 processor, and live task router for a saved checkpoint.
+
+## UCIT
+
+The six Qwen3-VL train/eval configurations are under
+`configs/train_configs/Drop/Qwen3VL/UCIT`. The top-level launcher preserves the
+explicit LLaVA/Drop blocks rather than looping over tasks:
+
+```bash
+cd Qwen3VL/Drop
+bash scripts/MCITlib/Train/train_UCIT.sh
+```
+
+Task 1 keeps Drop disabled, matching the original configuration. Tasks 2-6
+enable warm-up, importance collection, layer sharing, fine-grained masks, and
+pretrained-weight-guided regularization. Enable or comment individual train
+and evaluation commands directly in `train_UCIT.sh`.
 

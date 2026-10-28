@@ -1,0 +1,12 @@
+{
+  "gpu_num": 4,
+  "rank": 96,
+  "expert_num": 6,
+  "previous_model": "checkpoints/UCIT/Qwen3VL/DISCO/Task5_qwen3vl_lora",
+  "output_dir": "checkpoints/UCIT/Qwen3VL/DISCO/Task6_qwen3vl_lora",
+  "epoch": 1,
+  "batch_size": 1,
+  "grad_acc": 32,
+  "lr": 0.0002,
+  "cur_task": 5
+}

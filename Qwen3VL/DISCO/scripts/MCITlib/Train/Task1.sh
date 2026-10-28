@@ -2,6 +2,7 @@
 set -euo pipefail
 
 METHOD_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+REPO_ROOT=$(cd "$METHOD_ROOT/../.." && pwd)
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
@@ -9,6 +10,7 @@ TRAIN_CONFIG=$3
 read_config() {
     python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2"
 }
+resolve_repo_path() { [[ "$1" = /* ]] && printf '%s\n' "$1" || printf '%s/%s\n' "$REPO_ROOT" "$1"; }
 
 GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
 RANK=$(read_config "$TRAIN_CONFIG" rank)
@@ -16,7 +18,7 @@ EXPERT=$(read_config "$TRAIN_CONFIG" expert_num)
 MODEL_NAME=$(read_config "$MODEL_CONFIG" model_name)
 DATA_PATH=$(read_config "$DATA_CONFIG" train_path)
 IMAGE_FOLDER=$(read_config "$DATA_CONFIG" train_folder)
-OUTPUT_DIR=$(read_config "$TRAIN_CONFIG" output_dir)
+OUTPUT_DIR=$(resolve_repo_path "$(read_config "$TRAIN_CONFIG" output_dir)")
 CUR_TASK=$(read_config "$TRAIN_CONFIG" cur_task)
 EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
@@ -24,7 +26,7 @@ GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
 
 torchrun --nproc_per_node="$GPU_NUM" --master_port="${MASTER_PORT:-9001}" \
-    "$METHOD_ROOT/train_qwen.py" \
+    "$METHOD_ROOT/llava/train/train_mem_MOE.py" \
     --deepspeed "$METHOD_ROOT/scripts/zero2.json" \
     --model_name_or_path "$MODEL_NAME" \
     --data_path "$DATA_PATH" \

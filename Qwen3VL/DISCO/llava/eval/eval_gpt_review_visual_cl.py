@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--max-tokens', type=int, default=1024, help='maximum number of tokens produced in the output')
     args = parser.parse_args()
 
-    client = OpenAI(api_key="YOUR_API_KEY", base_url="https://orisound.cn/v1")
+    client = OpenAI(api_key="sk-REDACTED", base_url="https://orisound.cn/v1")
 
     f_q = open(os.path.expanduser(args.question))
     f_ans = open(os.path.expanduser(args.answer_list))

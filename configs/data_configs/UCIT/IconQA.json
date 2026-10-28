@@ -1,0 +1,6 @@
+{
+  "train_path": "/data/taosen/data/UCIT/instructions/IconQA/train.json",
+  "test_path": "/data/taosen/data/UCIT/instructions/IconQA/test_3000.json",
+  "train_folder": "/data/taosen/data/UCIT/datasets",
+  "test_folder": "/data/taosen/data/UCIT/datasets"
+}

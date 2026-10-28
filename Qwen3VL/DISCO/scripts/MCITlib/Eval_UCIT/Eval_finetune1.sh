@@ -1,54 +1,36 @@
-# #!/bin/bash
+#!/usr/bin/env bash
 
 TASK_ID=$1
-HARD_PATH=/data/taosen/code/MCITlib
+HARD_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)
+MODEL_CONFIG="$HARD_PATH/configs/modal_configs/qwen3vl.json"
+CONFIG_ROOT="$HARD_PATH/configs/train_configs/DISCO/Qwen3VL/UCIT/eval"
+DATA_ROOT="$HARD_PATH/configs/data_configs/UCIT"
 
 if [ "$TASK_ID" == "1" ]; then
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task1.json
+    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh "$MODEL_CONFIG" "$DATA_ROOT/ImageNet-R.json" "$CONFIG_ROOT/task1.json"
 elif [ "$TASK_ID" == "2" ]; then
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task2.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task2.json
+    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh "$MODEL_CONFIG" "$DATA_ROOT/ImageNet-R.json" "$CONFIG_ROOT/task2.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh "$MODEL_CONFIG" "$DATA_ROOT/ArxivQA.json" "$CONFIG_ROOT/task2.json"
 elif [ "$TASK_ID" == "3" ]; then
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task3.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task3.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/VizWiz.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task3.json
+    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh "$MODEL_CONFIG" "$DATA_ROOT/ImageNet-R.json" "$CONFIG_ROOT/task3.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh "$MODEL_CONFIG" "$DATA_ROOT/ArxivQA.json" "$CONFIG_ROOT/task3.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh "$MODEL_CONFIG" "$DATA_ROOT/VizWiz.json" "$CONFIG_ROOT/task3.json"
 elif [ "$TASK_ID" == "4" ]; then
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task4.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task4.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/VizWiz.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task4.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_iconqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/IconQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task4.json
+    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh "$MODEL_CONFIG" "$DATA_ROOT/ImageNet-R.json" "$CONFIG_ROOT/task4.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh "$MODEL_CONFIG" "$DATA_ROOT/ArxivQA.json" "$CONFIG_ROOT/task4.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh "$MODEL_CONFIG" "$DATA_ROOT/VizWiz.json" "$CONFIG_ROOT/task4.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_iconqa.sh "$MODEL_CONFIG" "$DATA_ROOT/IconQA.json" "$CONFIG_ROOT/task4.json"
 elif [ "$TASK_ID" == "5" ]; then
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task5.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task5.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/VizWiz.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task5.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_iconqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/IconQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task5.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_clevr.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/CLEVR-Math.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task5.json
+    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh "$MODEL_CONFIG" "$DATA_ROOT/ArxivQA.json" "$CONFIG_ROOT/task5.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh "$MODEL_CONFIG" "$DATA_ROOT/ImageNet-R.json" "$CONFIG_ROOT/task5.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh "$MODEL_CONFIG" "$DATA_ROOT/VizWiz.json" "$CONFIG_ROOT/task5.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_iconqa.sh "$MODEL_CONFIG" "$DATA_ROOT/IconQA.json" "$CONFIG_ROOT/task5.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_clevr.sh "$MODEL_CONFIG" "$DATA_ROOT/CLEVR-Math.json" "$CONFIG_ROOT/task5.json"
 else
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task6.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task6.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/VizWiz.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task6.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_iconqa.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/IconQA.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task6.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_clevr.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/CLEVR-Math.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task6.json
-    # pip install -e . --no-deps
-    bash scripts/MCITlib/Eval_UCIT/eval_flickr30k.sh $HARD_PATH/configs/modal_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/Flickr30k.json $HARD_PATH/configs/train_configs/DISCO/LLaVA/UCIT/eval/task6.json
+    bash scripts/MCITlib/Eval_UCIT/eval_imagenet.sh "$MODEL_CONFIG" "$DATA_ROOT/ImageNet-R.json" "$CONFIG_ROOT/task6.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_arxivqa.sh "$MODEL_CONFIG" "$DATA_ROOT/ArxivQA.json" "$CONFIG_ROOT/task6.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_vizwiz.sh "$MODEL_CONFIG" "$DATA_ROOT/VizWiz.json" "$CONFIG_ROOT/task6.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_iconqa.sh "$MODEL_CONFIG" "$DATA_ROOT/IconQA.json" "$CONFIG_ROOT/task6.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_clevr.sh "$MODEL_CONFIG" "$DATA_ROOT/CLEVR-Math.json" "$CONFIG_ROOT/task6.json"
+    bash scripts/MCITlib/Eval_UCIT/eval_flickr30k.sh "$MODEL_CONFIG" "$DATA_ROOT/Flickr30k.json" "$CONFIG_ROOT/task6.json"
 fi

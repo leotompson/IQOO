@@ -1,9 +1,11 @@
 # DISCO for Qwen3-VL
 
-The active training entry point is `train_qwen.py`. It uses the original
-Qwen3-VL processor, chat template, multimodal RoPE, image/video inputs, and
-`Qwen3VLForConditionalGeneration` from `Qwen3-VL/qwen-vl-finetune`.
-The old `llava/` tree is retained only as the algorithm reference.
+The active training call path follows the original LLaVA/DISCO layout:
+`scripts/MCITlib/Train/Task*.sh` -> `llava/train/train_mem_MOE.py` ->
+`llava/train/train_MOE.py::train` -> `CoIN.peft.get_peft_model` ->
+`CoINMOELoraLinear.forward`. Qwen3-VL supplies the base model, processor, chat
+template, multimodal RoPE, image/video inputs, and supervised data module.
+`train_qwen.py` is only a compatibility entry point for direct invocations.
 
 DISCO keeps one CoIN-MoE LoRA expert per continual task. During training the
 current expert is selected by `--cur_task`. A normalized prototype of the
@@ -34,7 +36,7 @@ Use either an upstream `--dataset_use` registry name or the existing MCIT pair
 Task ids are zero-based and `lora_r` must be divisible by `expert_num`.
 
 ```bash
-torchrun --nproc_per_node=8 train_qwen.py \
+torchrun --nproc_per_node=8 llava/train/train_mem_MOE.py \
   --deepspeed scripts/zero2.json \
   --model_name_or_path Qwen/Qwen3-VL-4B-Instruct \
   --data_path /data/task1.json --image_folder /data/images \
@@ -56,4 +58,31 @@ Qwen3-VL `model_name`; data/train JSON keys keep their existing names.
 
 For evaluation, `from model_loader import load_model` returns the Qwen model,
 processor, and live DISCO router for a saved checkpoint.
+
+## UCIT six-task pipeline
+
+The Qwen3-VL UCIT configs live under
+`configs/train_configs/DISCO/Qwen3VL/UCIT`. The launcher keeps the original
+LLaVA/DISCO layout: every task has an explicit training command followed by a
+separate cumulative evaluation command. Enable or disable the individual
+commands directly in `train_UCIT.sh`, just as in the original LLaVA script.
+
+```bash
+cd Qwen3VL/DISCO
+bash scripts/MCITlib/Train/train_UCIT.sh
+```
+
+Training and evaluation can also be run independently:
+
+```bash
+bash scripts/MCITlib/Train/Taskn.sh \
+  ../../configs/modal_configs/qwen3vl.json \
+  ../../configs/data_configs/UCIT/ArxivQA.json \
+  ../../configs/train_configs/DISCO/Qwen3VL/UCIT/train/task2.json
+bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 2
+```
+
+Exact-answer tasks use the existing MCIT evaluator. VizWiz and Flickr30k use
+the caption evaluator. Install the optional scoring dependencies with
+`pip install -e '.[eval]'` before running the complete evaluation flow.
 

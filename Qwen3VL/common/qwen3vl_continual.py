@@ -13,6 +13,7 @@ import math
 import os
 import random
 import sys
+import uuid
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,6 +79,8 @@ class TrainingArguments(transformers.TrainingArguments):
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(default=8192)
     remove_unused_columns: bool = field(default=False)
+    mm_projector_lr: Optional[float] = field(default=None)
+    group_by_modality_length: bool = field(default=False)
 
     lora_enable: bool = field(default=True)
     lora_r: int = field(default=64)
@@ -677,4 +680,117 @@ def load_continual_model(
     model.eval().to(device)
     processor = AutoProcessor.from_pretrained(str(checkpoint_path))
     return model, processor, router
+
+
+def _get_eval_chunk(items: list, num_chunks: int, chunk_idx: int) -> list:
+    if num_chunks <= 0 or not 0 <= chunk_idx < num_chunks:
+        raise ValueError("chunk_idx must satisfy 0 <= chunk_idx < num_chunks")
+    chunk_size = math.ceil(len(items) / num_chunks)
+    start = chunk_idx * chunk_size
+    return items[start : start + chunk_size]
+
+
+def eval_main(method_root: Path) -> None:
+    """Generate Qwen3-VL answers in the JSONL format used by MCIT evaluators."""
+    import argparse
+    from PIL import Image
+    from tqdm import tqdm
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", required=True)
+    parser.add_argument("--question-file", required=True)
+    parser.add_argument("--image-folder", required=True)
+    parser.add_argument("--answers-file", required=True)
+    parser.add_argument("--num-chunks", type=int, default=1)
+    parser.add_argument("--chunk-idx", type=int, default=0)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--top-p", type=float, default=None)
+    parser.add_argument("--num-beams", type=int, default=1)
+    parser.add_argument("--max-new-tokens", type=int, default=256)
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--attn-implementation", default="flash_attention_2")
+    eval_args = parser.parse_args()
+
+    model, processor, router = load_continual_model(
+        eval_args.model_path,
+        method_root,
+        device=eval_args.device,
+        attn_implementation=eval_args.attn_implementation,
+    )
+    del router  # The forward hooks retain the router; this documents intentional use.
+
+    with open(eval_args.question_file, encoding="utf-8") as handle:
+        questions = json.load(handle)
+    questions = _get_eval_chunk(questions, eval_args.num_chunks, eval_args.chunk_idx)
+    output_path = Path(eval_args.answers_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", encoding="utf-8") as answer_file:
+        for sample in tqdm(questions, desc=f"chunk {eval_args.chunk_idx}"):
+            question_id = sample.get("question_id", sample.get("id"))
+            question = sample.get("text") or sample.get("question")
+            image_value = sample.get("image")
+            if question_id is None or question is None or image_value is None:
+                raise ValueError(
+                    "Each UCIT test sample needs question_id/id, text/question, and image"
+                )
+            image_values = image_value if isinstance(image_value, list) else [image_value]
+            content = []
+            opened_images = []
+            for image_name in image_values:
+                image_path = Path(image_name)
+                if not image_path.is_absolute():
+                    image_path = Path(eval_args.image_folder) / image_path
+                image = Image.open(image_path).convert("RGB")
+                opened_images.append(image)
+                content.append({"type": "image", "image": image})
+            content.append({"type": "text", "text": question})
+            messages = [{"role": "user", "content": content}]
+            inputs = processor.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
+            inputs = {
+                key: value.to(eval_args.device) if isinstance(value, torch.Tensor) else value
+                for key, value in inputs.items()
+            }
+            generation_kwargs = {
+                "do_sample": eval_args.temperature > 0,
+                "temperature": eval_args.temperature if eval_args.temperature > 0 else None,
+                "top_p": eval_args.top_p,
+                "num_beams": eval_args.num_beams,
+                "max_new_tokens": eval_args.max_new_tokens,
+                "use_cache": True,
+            }
+            generation_kwargs = {
+                key: value for key, value in generation_kwargs.items() if value is not None
+            }
+            with torch.inference_mode():
+                generated_ids = model.generate(**inputs, **generation_kwargs)
+            input_length = inputs["input_ids"].shape[1]
+            generated_text = processor.batch_decode(
+                generated_ids[:, input_length:],
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )[0].strip()
+            for image in opened_images:
+                image.close()
+            answer_file.write(
+                json.dumps(
+                    {
+                        "question_id": question_id,
+                        "prompt": question,
+                        "text": generated_text,
+                        "answer_id": uuid.uuid4().hex,
+                        "model_id": Path(eval_args.model_path).name,
+                        "metadata": {},
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            answer_file.flush()
 

@@ -1,0 +1,23 @@
+{
+  "gpu_num": 4,
+  "rank": 96,
+  "expert_num": 6,
+  "previous_model": "checkpoints/UCIT/Qwen3VL/Drop/Task5_qwen3vl_lora",
+  "output_dir": "checkpoints/UCIT/Qwen3VL/Drop/Task6_qwen3vl_lora",
+  "epoch": 1,
+  "batch_size": 1,
+  "grad_acc": 32,
+  "lr": 0.0002,
+  "cur_task": 5,
+  "lora_drop_enable": true,
+  "lora_drop_warmup_steps": 2,
+  "lora_drop_eval_ratio": 0.1,
+  "lora_drop_threshold": 0.9,
+  "fine_grained_prune_ratio": 0.1,
+  "fine_grained_start_task": 1,
+  "fine_grained_min_keep_ratio": 0.4,
+  "fine_grained_max_keep_ratio": 0.9,
+  "pretrain_reg_lambda": 1.0,
+  "pretrain_reg_omega": 1.0,
+  "shared_target_rank": 12
+}

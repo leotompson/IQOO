@@ -334,7 +334,12 @@ class CoINMOELoraLinear(nn.Linear, CoINMOELoraLayer):
         self.cur_task = kwargs.pop("cur_task", True)
         layer_name = kwargs.pop("layer_name", "")
         self.lora_id = self.cur_task
-        self.mask_signal = [1.0, 0, 0, 0, 0, 0, 0, 0]
+        # UCIT uses six experts. Build the signal from expert_num instead of
+        # retaining the LLaVA branch's hard-coded eight-element list.
+        self.mask_signal = [
+            1.0 if expert_id == self.cur_task else 0.0
+            for expert_id in range(self.expert_num)
+        ]
 
         # LoRA-Drop: store layer name for importance tracking
         self.layer_name = layer_name

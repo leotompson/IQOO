@@ -1,0 +1,7 @@
+{
+  "gpu_num": 4,
+  "stage": "Qwen3VL-Drop-task5",
+  "model_path": "checkpoints/UCIT/Qwen3VL/Drop/Task5_qwen3vl_lora",
+  "result_path": "results/UCIT/Qwen3VL/Drop/each_dataset",
+  "num_task": 6
+}

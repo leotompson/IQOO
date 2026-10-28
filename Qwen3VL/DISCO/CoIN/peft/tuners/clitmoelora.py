@@ -318,7 +318,12 @@ class CoINMOELoraLinear(nn.Linear, CoINMOELoraLayer):
         self.te_dim = kwargs.pop("task_embedding_dim", True)
         self.cur_task = kwargs.pop("cur_task", True)
         self.lora_id = self.cur_task
-        self.mask_signal = [1.0, 0, 0, 0, 0, 0, 0, 0]
+        # The original file hard-coded eight entries. UCIT uses six experts,
+        # so build the signal from expert_num and select the current expert.
+        self.mask_signal = [
+            1.0 if expert_id == self.cur_task else 0.0
+            for expert_id in range(self.expert_num)
+        ]
 
         nn.Linear.__init__(self, in_features, out_features, **kwargs)
         CoINMOELoraLayer.__init__(self, in_features=in_features, 
